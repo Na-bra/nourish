@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { useApp } from "@/context/AppContext";
+import { apiPatch } from "@/lib/api";
 
 export const Route = createFileRoute("/onboarding")({ component: Onboarding });
 
@@ -45,13 +47,34 @@ const activities = [
 
 function Onboarding() {
   const navigate = useNavigate();
+  const { user, setUser } = useApp();
   const [step, setStep] = useState(0);
   const [data, setData] = useState<Data>({ allergies: [] });
   const steps = ["Goal", "Diet", "Allergies", "Body", "Activity", "Meals"];
   const progress = ((step + 1) / steps.length) * 100;
 
   const next = () => step < steps.length - 1 ? setStep(s => s + 1) : finish();
-  const finish = () => { toast.success("You're all set!"); navigate({ to: "/dashboard" }); };
+  const finish = async () => {
+    try {
+      if (user?._id) {
+        const updated = await apiPatch<any>(`/users/${user._id}`, {
+          goal: data.goal,
+          diet: data.diet,
+          allergies: data.allergies,
+          weight: data.weight,
+          height: data.height,
+          activity: data.activity,
+          mealsPerDay: data.meals,
+          onboardingCompleted: true,
+        });
+        setUser(updated);
+      }
+      toast.success("You're all set!");
+      navigate({ to: "/dashboard" });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save onboarding");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-muted/30">

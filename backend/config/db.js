@@ -13,7 +13,9 @@ const connectDB = async () => {
 		throw new Error('DATABASE_URL is not defined in .env');
 	}
 
-	await mongoose.connect(databaseUrl);
+	await mongoose.connect(databaseUrl, {
+		serverSelectionTimeoutMS: 10000,
+	});
 	isConnected = true;
 
 	return mongoose.connection;

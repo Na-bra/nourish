@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { useApp } from "@/context/AppContext";
 import { toast } from "sonner";
+import { apiPatch } from "@/lib/api";
 
 export const Route = createFileRoute("/_dashboard/profile")({ component: Profile });
 
@@ -18,14 +19,32 @@ const allergies = ["Dairy", "Gluten", "Nuts", "Shellfish", "Eggs", "Soy"];
 
 function Profile() {
   const { user } = useApp();
-  const [diet, setDiet] = useState("Balanced");
-  const [picked, setPicked] = useState<string[]>(["Nuts"]);
-  const [prefs, setPrefs] = useState({ meal: true, water: true, weekly: false, promo: false });
+  const [diet, setDiet] = useState(user?.diet || "balanced");
+  const [picked, setPicked] = useState<string[]>(user?.allergies || []);
+  const [prefs, setPrefs] = useState(user?.notifications || { meal: true, water: true, weekly: false, promo: false });
+  const [name, setName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
+
+  const saveProfile = async () => {
+    if (!user?._id) {
+      toast.error("Please sign in first");
+      return;
+    }
+
+    await apiPatch(`/users/${user._id}`, {
+      name,
+      email,
+      diet,
+      allergies: picked,
+      notifications: prefs,
+    });
+    toast.success("Settings saved");
+  };
 
   return (
     <>
       <PageHeader title="Settings" subtitle="Manage your profile, preferences and notifications."
-        action={<Button className="rounded-full" onClick={() => toast.success("Settings saved")}>Save changes</Button>} />
+        action={<Button className="rounded-full" onClick={saveProfile}>Save changes</Button>} />
       <div className="space-y-6 p-4 md:p-8">
         <Card className="p-6">
           <div className="flex items-center gap-4">
@@ -33,7 +52,7 @@ function Profile() {
             <div className="flex-1">
               <h3 className="font-display text-xl font-semibold">{user?.name}</h3>
               <p className="text-sm text-muted-foreground">{user?.email}</p>
-              <Badge variant="secondary" className="mt-2 rounded-full">Plus member</Badge>
+              <Badge variant="secondary" className="mt-2 rounded-full">{user?.subscriptionTier || "Starter"} member</Badge>
             </div>
             <Button variant="outline">Edit avatar</Button>
           </div>
@@ -41,8 +60,8 @@ function Profile() {
 
         <Section icon={UserIcon} title="Account">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div><Label>Full name</Label><Input defaultValue={user?.name} className="mt-1.5" /></div>
-            <div><Label>Email</Label><Input defaultValue={user?.email} className="mt-1.5" /></div>
+            <div><Label>Full name</Label><Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5" /></div>
+            <div><Label>Email</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1.5" /></div>
             <div><Label>Age</Label><Input type="number" defaultValue={29} className="mt-1.5" /></div>
             <div><Label>Timezone</Label><Input defaultValue="UTC+1" className="mt-1.5" /></div>
           </div>
@@ -53,8 +72,8 @@ function Profile() {
             <Label className="text-xs uppercase text-muted-foreground">Eating style</Label>
             <div className="mt-2 flex flex-wrap gap-2">
               {diets.map(d => (
-                <button key={d} onClick={() => setDiet(d)}
-                  className={`rounded-full border px-4 py-1.5 text-sm transition ${diet === d ? "border-primary bg-primary text-primary-foreground" : "hover:border-primary"}`}>{d}</button>
+                <button key={d} onClick={() => setDiet(d.toLowerCase())}
+                  className={`rounded-full border px-4 py-1.5 text-sm transition ${diet.toLowerCase() === d.toLowerCase() ? "border-primary bg-primary text-primary-foreground" : "hover:border-primary"}`}>{d}</button>
               ))}
             </div>
           </div>

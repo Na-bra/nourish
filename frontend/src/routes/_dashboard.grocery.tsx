@@ -1,59 +1,96 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Printer, Share2, RefreshCw, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/dashboard/PageHeader";
-import { recipes } from "@/lib/mock-data";
+import { apiGet, apiPatch } from "@/lib/api";
+import { useApp } from "@/context/AppContext";
 
 export const Route = createFileRoute("/_dashboard/grocery")({ component: Grocery });
 
-const groceryCategories: Record<string, { name: string; qty: string }[]> = {
-  "Produce": [
-    { name: "Cherry tomatoes", qty: "2 cups" },
-    { name: "Cucumber", qty: "1" },
-    { name: "Avocado", qty: "2" },
-    { name: "Spinach", qty: "4 cups" },
-    { name: "Sweet potato", qty: "4" },
-    { name: "Banana", qty: "6" },
-    { name: "Blueberries", qty: "2 cups" },
-  ],
-  "Proteins": [
-    { name: "Salmon fillet", qty: "400g" },
-    { name: "Chicken breast", qty: "600g" },
-    { name: "Eggs", qty: "1 dozen" },
-  ],
-  "Grains & Bakery": [
-    { name: "Quinoa", qty: "1 bag" },
-    { name: "Brown rice", qty: "1 bag" },
-    { name: "Sourdough bread", qty: "1 loaf" },
-    { name: "Rolled oats", qty: "1 container" },
-  ],
-  "Dairy": [
-    { name: "Greek yogurt", qty: "2 tubs" },
-    { name: "Almond milk", qty: "1 carton" },
-  ],
-  "Pantry": [
-    { name: "Tahini", qty: "1 jar" },
-    { name: "Olive oil", qty: "1 bottle" },
-    { name: "Soy sauce", qty: "1 bottle" },
-    { name: "Almonds", qty: "1 bag" },
-  ],
+type GroceryListDoc = {
+  _id: string;
+  userId: string;
+  categories: Array<{
+    name: string;
+    items: Array<{ name: string; qty: string; checked?: boolean }>;
+  }>;
 };
 
 function Grocery() {
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-  const total = Object.values(groceryCategories).flat().length;
-  const toggle = (k: string) => {
-    const next = new Set(checked);
-    next.has(k) ? next.delete(k) : next.add(k);
-    setChecked(next);
+  const { user } = useApp();
+  const [groceryLists, setGroceryLists] = useState<GroceryListDoc[]>([]);
+  const [groceryListId, setGroceryListId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadGrocery = async () => {
+      try {
+        const data = await apiGet<GroceryListDoc[]>("/grocery-lists");
+        if (!mounted) return;
+        setGroceryLists(data || []);
+        const selected = user?._id ? data.find((g) => g.userId === user._id) || data[0] || null : data[0] || null;
+        setGroceryListId(selected?._id || null);
+        setError(null);
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || "Failed to load grocery list");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadGrocery();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const selected = useMemo(() => {
+    if (!groceryLists.length) return null;
+    return user?._id ? groceryLists.find((g) => g.userId === user._id) || groceryLists[0] : groceryLists[0];
+  }, [groceryLists, user?._id]);
+
+  const total = selected?.categories.reduce((sum, cat) => sum + (cat.items?.length || 0), 0) || 0;
+  const checkedCount = selected?.categories.reduce((sum, cat) => sum + (cat.items || []).filter((item) => item.checked).length, 0) || 0;
+
+  const toggle = async (categoryName: string, itemName: string) => {
+    if (!selected || !groceryListId) return;
+
+    const nextLists = groceryLists.map((list) => {
+      if (list._id !== groceryListId) return list;
+      return {
+        ...list,
+        categories: list.categories.map((category) => {
+          if (category.name !== categoryName) return category;
+          return {
+            ...category,
+            items: category.items.map((item) => item.name === itemName ? { ...item, checked: !item.checked } : item),
+          };
+        }),
+      };
+    });
+
+    setGroceryLists(nextLists);
+
+    const nextSelected = nextLists.find((item) => item._id === groceryListId);
+    if (!nextSelected) return;
+
+    try {
+      await apiPatch(`/grocery-lists/${groceryListId}`, nextSelected);
+      setError(null);
+    } catch (err: any) {
+      setError(err?.message || "Failed to save grocery list");
+    }
   };
 
   return (
     <>
-      <PageHeader title="Grocery list" subtitle={`${checked.size} of ${total} items checked • generated from this week's meal plan`}
+      <PageHeader title="Grocery list" subtitle={`${checkedCount} of ${total} items checked • generated from this week's meal plan`}
         action={
           <div className="flex gap-2">
             <Button variant="outline" className="rounded-full"><RefreshCw className="mr-1 h-4 w-4" /> Regenerate</Button>
@@ -61,20 +98,21 @@ function Grocery() {
             <Button className="rounded-full"><Share2 className="mr-1 h-4 w-4" /> Share</Button>
           </div>
         } />
+      {loading && <div className="px-4 text-sm text-muted-foreground md:px-8">Loading grocery list...</div>}
+      {!loading && error && <div className="px-4 text-sm text-destructive md:px-8">{error}</div>}
       <div className="grid gap-6 p-4 md:grid-cols-2 md:p-8 lg:grid-cols-3">
-        {Object.entries(groceryCategories).map(([cat, items]) => (
-          <Card key={cat} className="p-5">
+        {(selected?.categories || []).map((category) => (
+          <Card key={category.name} className="p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-display font-semibold">{cat}</h3>
-              <Badge variant="secondary" className="rounded-full">{items.length}</Badge>
+              <h3 className="font-display font-semibold">{category.name}</h3>
+              <Badge variant="secondary" className="rounded-full">{category.items.length}</Badge>
             </div>
             <ul className="space-y-1.5">
-              {items.map(item => {
-                const key = `${cat}-${item.name}`;
-                const isChecked = checked.has(key);
+              {category.items.map((item) => {
+                const isChecked = !!item.checked;
                 return (
-                  <li key={key}>
-                    <button onClick={() => toggle(key)} className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-muted">
+                  <li key={`${category.name}-${item.name}`}>
+                    <button onClick={() => toggle(category.name, item.name)} className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-muted">
                       <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 transition ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
                         {isChecked && <Check className="h-3 w-3" />}
                       </span>
@@ -87,6 +125,7 @@ function Grocery() {
             </ul>
           </Card>
         ))}
+        {!loading && !error && !total && <p className="col-span-full text-muted-foreground">No grocery items found.</p>}
       </div>
     </>
   );

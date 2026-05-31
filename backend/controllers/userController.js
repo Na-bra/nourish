@@ -2,7 +2,12 @@ const User = require('../models/User');
 
 const getUsers = async (req, res) => {
 	try {
-		const users = await User.find().sort({ createdAt: -1 });
+		if (req.user?._id) {
+			const user = await User.findById(req.user._id).select('-password');
+			return res.json(user ? [user] : []);
+		}
+
+		const users = await User.find().select('-password').sort({ createdAt: -1 });
 		return res.json(users);
 	} catch (error) {
 		return res.status(500).json({ message: 'Failed to fetch users' });
@@ -15,6 +20,10 @@ const getUserById = async (req, res) => {
 		if (!user) {
 			return res.status(404).json({ message: 'User not found' });
 		}
+		if (req.user?._id && String(user._id) !== String(req.user._id)) {
+			return res.status(403).json({ message: 'Forbidden' });
+		}
+		user.password = undefined;
 		return res.json(user);
 	} catch (error) {
 		return res.status(500).json({ message: 'Failed to fetch user' });
@@ -41,6 +50,10 @@ const createUser = async (req, res) => {
 
 const updateUser = async (req, res) => {
 	try {
+		if (req.user?._id && String(req.params.id) !== String(req.user._id)) {
+			return res.status(403).json({ message: 'Forbidden' });
+		}
+
 		const user = await User.findByIdAndUpdate(req.params.id, req.body, {
 			new: true,
 			runValidators: true,
@@ -48,6 +61,7 @@ const updateUser = async (req, res) => {
 		if (!user) {
 			return res.status(404).json({ message: 'User not found' });
 		}
+		user.password = undefined;
 		return res.json(user);
 	} catch (error) {
 		return res.status(400).json({ message: error.message });

@@ -6,13 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Check } from "lucide-react";
+import { apiPost } from "@/lib/api";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/forgot-password")({ component: Forgot });
 
 function Forgot() {
   const { register, handleSubmit, formState: { isSubmitting } } = useForm<{ email: string }>();
   const [sent, setSent] = useState(false);
-  const onSubmit = async () => { await new Promise(r => setTimeout(r, 500)); setSent(true); };
+  const onSubmit = async ({ email }: { email: string }) => {
+    try {
+      await apiPost("/auth/forgot-password", { email });
+      setSent(true);
+    } catch (err: any) {
+      // Backend route may not exist yet; keep UI explicit.
+      toast.error(err?.status === 404 ? "Password reset endpoint is not implemented yet." : (err?.message || "Failed to send reset link"));
+    }
+  };
   return (
     <AuthShell title="Reset password" subtitle="We'll email you a secure reset link."
       footer={<>Remembered it? <Link to="/login" className="font-medium text-primary hover:underline">Sign in</Link></>}>

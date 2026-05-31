@@ -6,23 +6,70 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useApp } from "@/context/AppContext";
-import { testimonials, pricingTiers, faqs } from "@/lib/mock-data";
-import { useState } from "react";
+import { apiGet } from "@/lib/api";
+import { useEffect, useState } from "react";
+
+type LandingContent = {
+  features: { icon: string; title: string; desc: string }[];
+  preview: {
+    title: string;
+    greeting: string;
+    status: string;
+    stats: { label: string; value: string; goal: string; color: string }[];
+    meals: { meal: string; item: string; kcal: number; emoji: string }[];
+    streakLabel: string;
+    streakValue: string;
+  };
+  testimonials: { name: string; role: string; avatar: string; quote: string }[];
+  pricingTiers: { name: string; price: number; period: string; features: string[]; cta: string; popular: boolean }[];
+  faqs: { q: string; a: string }[];
+};
+
+const iconMap = { Activity, ChefHat, Sparkles, Target, BarChart3, ShoppingBasket } as const;
 
 export const Route = createFileRoute("/")({ component: Landing });
 
 function Landing() {
-  const { theme, toggleTheme } = useApp();
+  const { theme, toggleTheme, user } = useApp();
   const [open, setOpen] = useState(false);
+  const [content, setContent] = useState<LandingContent | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const features = [
-    { icon: ChefHat, title: "Personalized Meal Plans", desc: "Weekly plans tailored to your goals, allergies, and preferences." },
-    { icon: Activity, title: "Calorie & Macro Tracking", desc: "Effortless logging with a 100k+ food database." },
-    { icon: Target, title: "Goal-Based Coaching", desc: "Whether you cut, bulk, or maintain — we adapt to you." },
-    { icon: BarChart3, title: "Progress Analytics", desc: "Beautiful charts for weight, habits, and nutrition trends." },
-    { icon: ShoppingBasket, title: "Smart Grocery Lists", desc: "Auto-generated, categorized, and checklist-ready." },
-    { icon: Sparkles, title: "Recipes You'll Love", desc: "Curated by dietitians, sorted by your tastes." },
-  ];
+  useEffect(() => {
+    let mounted = true;
+    const loadContent = async () => {
+      try {
+        const data = await apiGet<LandingContent>("/content/landing");
+        if (!mounted) return;
+        setContent(data);
+        setError(null);
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || "Failed to load landing content");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadContent();
+    return () => { mounted = false; };
+  }, []);
+
+  const features = content?.features || [];
+  const preview = content?.preview;
+  const testimonials = content?.testimonials || [];
+  const pricingTiers = content?.pricingTiers || [];
+  const faqs = content?.faqs || [];
+  const firstName = user?.name?.split(" ")[0] || "there";
+
+  if (loading && !content) {
+    return <div className="grid min-h-screen place-items-center text-muted-foreground">Loading site content...</div>;
+  }
+
+  if (error && !content) {
+    return <div className="grid min-h-screen place-items-center text-destructive">{error}</div>;
+  }
 
   return (
     <div className="min-h-screen">
@@ -109,17 +156,13 @@ function Landing() {
             <Card className="overflow-hidden p-6 shadow-glow">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <div className="text-xs text-muted-foreground">Today</div>
-                  <div className="font-display text-xl font-semibold">Good morning, Alex</div>
+                  <div className="text-xs text-muted-foreground">{preview?.title || "Today"}</div>
+                  <div className="font-display text-xl font-semibold">{preview?.greeting || "Good morning"}, {firstName}</div>
                 </div>
-                <Badge className="rounded-full bg-[color:var(--success)] text-primary-foreground">On track</Badge>
+                <Badge className="rounded-full bg-[color:var(--success)] text-primary-foreground">{preview?.status || "On track"}</Badge>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: "Calories", value: "1,420", goal: "/ 2,000", color: "var(--chart-1)" },
-                  { label: "Protein", value: "92g", goal: "/ 140g", color: "var(--chart-2)" },
-                  { label: "Water", value: "1.4L", goal: "/ 2.5L", color: "var(--chart-3)" },
-                ].map((m) => (
+                {(preview?.stats || []).map((m) => (
                   <div key={m.label} className="rounded-xl bg-muted p-3">
                     <div className="text-xs text-muted-foreground">{m.label}</div>
                     <div className="mt-1 font-display text-lg font-bold">{m.value}<span className="text-xs font-normal text-muted-foreground">{m.goal}</span></div>
@@ -130,11 +173,7 @@ function Landing() {
                 ))}
               </div>
               <div className="mt-4 space-y-2">
-                {[
-                  { meal: "Breakfast", item: "Berry Protein Smoothie", kcal: 290, emoji: "🥤" },
-                  { meal: "Lunch", item: "Mediterranean Salmon Bowl", kcal: 520, emoji: "🥗" },
-                  { meal: "Snack", item: "Greek yogurt + almonds", kcal: 240, emoji: "🥛" },
-                ].map((m) => (
+                {(preview?.meals || []).map((m) => (
                   <div key={m.meal} className="flex items-center justify-between rounded-xl border bg-card p-3">
                     <div className="flex items-center gap-3">
                       <div className="grid h-10 w-10 place-items-center rounded-lg bg-secondary text-xl">{m.emoji}</div>
@@ -150,8 +189,8 @@ function Landing() {
             </Card>
             <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 4, repeat: Infinity }}
               className="absolute -right-4 -top-4 hidden rounded-2xl bg-card p-3 shadow-soft md:block">
-              <div className="text-xs text-muted-foreground">Streak</div>
-              <div className="font-display text-2xl font-bold">🔥 12 days</div>
+              <div className="text-xs text-muted-foreground">{preview?.streakLabel || "Streak"}</div>
+              <div className="font-display text-2xl font-bold">{preview?.streakValue || "🔥 0 days"}</div>
             </motion.div>
           </motion.div>
         </div>
@@ -169,7 +208,10 @@ function Landing() {
             <motion.div key={f.title} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.05 }}>
               <Card className="h-full p-6 transition-shadow hover:shadow-soft">
                 <div className="mb-4 grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary">
-                  <f.icon className="h-6 w-6" />
+                  {(() => {
+                    const Icon = iconMap[f.icon as keyof typeof iconMap] || Sparkles;
+                    return <Icon className="h-6 w-6" />;
+                  })()}
                 </div>
                 <h3 className="font-display text-xl font-semibold">{f.title}</h3>
                 <p className="mt-2 text-sm text-muted-foreground">{f.desc}</p>

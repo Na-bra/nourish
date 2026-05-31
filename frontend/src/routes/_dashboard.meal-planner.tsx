@@ -1,15 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, Fragment } from "react";
+import { useState, Fragment, useEffect } from "react";
 import { Heart, Printer, Plus, GripVertical, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/dashboard/PageHeader";
-import { recipes } from "@/lib/mock-data";
 import { useApp } from "@/context/AppContext";
+import { apiGet, apiPatch } from "@/lib/api";
 
 export const Route = createFileRoute("/_dashboard/meal-planner")({ component: MealPlanner });
 
@@ -18,23 +17,142 @@ const mealTypes = ["Breakfast", "Lunch", "Dinner"] as const;
 
 type Slot = { id: string; recipeId: string; portion: number };
 type Plan = Record<string, Record<string, Slot[]>>;
+type Recipe = { _id: string; externalId?: string; name: string; calories: number; emoji?: string };
+type MealPlanDoc = {
+  _id: string;
+  userId: string;
+  weekStart: string;
+  days: Array<{
+    day: string;
+    meals: {
+      breakfast: Array<{ recipeId: string; portion: number }>;
+      lunch: Array<{ recipeId: string; portion: number }>;
+      dinner: Array<{ recipeId: string; portion: number }>;
+    };
+  }>;
+};
 
-function makeInitial(): Plan {
+function makeEmptyPlan(): Plan {
   const plan: Plan = {};
-  days.forEach((d, di) => {
+  days.forEach((d) => {
     plan[d] = {};
-    mealTypes.forEach((m, mi) => {
-      const r = recipes[(di + mi) % recipes.length];
-      plan[d][m] = [{ id: `${d}-${m}-${r.id}`, recipeId: r.id, portion: 1 }];
+    mealTypes.forEach((m) => {
+      plan[d][m] = [];
     });
   });
   return plan;
 }
 
+const dayMap: Record<string, string> = {
+  mon: "Mon",
+  tue: "Tue",
+  wed: "Wed",
+  thu: "Thu",
+  fri: "Fri",
+  sat: "Sat",
+  sun: "Sun",
+};
+
+function normalizeDay(value: string) {
+  return dayMap[(value || "").slice(0, 3).toLowerCase()] || "Mon";
+}
+
+function toPlan(doc: MealPlanDoc | null): Plan {
+  const plan = makeEmptyPlan();
+  if (!doc) return plan;
+
+  doc.days.forEach((d) => {
+    const day = normalizeDay(d.day);
+    plan[day].Breakfast = (d.meals?.breakfast || []).map((s, idx) => ({
+      id: `${day}-Breakfast-${s.recipeId}-${idx}`,
+      recipeId: s.recipeId,
+      portion: s.portion,
+    }));
+    plan[day].Lunch = (d.meals?.lunch || []).map((s, idx) => ({
+      id: `${day}-Lunch-${s.recipeId}-${idx}`,
+      recipeId: s.recipeId,
+      portion: s.portion,
+    }));
+    plan[day].Dinner = (d.meals?.dinner || []).map((s, idx) => ({
+      id: `${day}-Dinner-${s.recipeId}-${idx}`,
+      recipeId: s.recipeId,
+      portion: s.portion,
+    }));
+  });
+
+  return plan;
+}
+
+function recipeKey(recipe: Recipe) {
+  return recipe.externalId || recipe._id;
+}
+
+function recipeLookupKey(slotRecipeId: string, recipe: Recipe) {
+  return recipe.externalId === slotRecipeId || recipe._id === slotRecipeId;
+}
+
 function MealPlanner() {
-  const [plan, setPlan] = useState<Plan>(makeInitial);
-  const { favorites, toggleFavorite } = useApp();
+  const [plan, setPlan] = useState<Plan>(makeEmptyPlan);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [mealPlanId, setMealPlanId] = useState<string | null>(null);
+  const [weekStart, setWeekStart] = useState<string | null>(null);
+  const { favorites, toggleFavorite, user } = useApp();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const serializePlan = (nextPlan: Plan) => days.map((day) => ({
+    day,
+    meals: {
+      breakfast: nextPlan[day].Breakfast.map((slot) => ({ recipeId: slot.recipeId, portion: slot.portion })),
+      lunch: nextPlan[day].Lunch.map((slot) => ({ recipeId: slot.recipeId, portion: slot.portion })),
+      dinner: nextPlan[day].Dinner.map((slot) => ({ recipeId: slot.recipeId, portion: slot.portion })),
+    },
+  }));
+
+  const persistPlan = async (nextPlan: Plan) => {
+    if (!mealPlanId) return;
+    try {
+      await apiPatch(`/meal-plans/${mealPlanId}`, {
+        weekStart: weekStart || new Date().toISOString(),
+        days: serializePlan(nextPlan),
+      });
+    } catch (err: any) {
+      setError(err?.message || "Failed to save meal plan");
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadData = async () => {
+      try {
+        const [recipesData, mealPlans] = await Promise.all([
+          apiGet<Recipe[]>("/recipes"),
+          apiGet<MealPlanDoc[]>("/meal-plans"),
+        ]);
+
+        if (!mounted) return;
+
+        setRecipes(recipesData || []);
+        const selected = user?._id ? mealPlans.find((p) => p.userId === user._id) : mealPlans[0] || null;
+        setMealPlanId(selected?._id || null);
+        setWeekStart(selected?.weekStart || null);
+        setPlan(toPlan(selected || null));
+        setError(null);
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || "Failed to load meal plan");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadData();
+    return () => {
+      mounted = false;
+    };
+  }, [user?._id]);
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -44,23 +162,35 @@ function MealPlanner() {
     const oldIdx = items.findIndex(i => i.id === active.id.toString().split("|")[2]);
     const newIdx = items.findIndex(i => i.id === over.id.toString().split("|")[2]);
     if (oldIdx === -1 || newIdx === -1) return;
-    setPlan({ ...plan, [day]: { ...plan[day], [meal]: arrayMove(items, oldIdx, newIdx) } });
+    const next = { ...plan, [day]: { ...plan[day], [meal]: arrayMove(items, oldIdx, newIdx) } };
+    setPlan(next);
+    void persistPlan(next);
   };
 
   const removeSlot = (day: string, meal: string, id: string) => {
-    setPlan({ ...plan, [day]: { ...plan[day], [meal]: plan[day][meal].filter(s => s.id !== id) } });
+    const next = { ...plan, [day]: { ...plan[day], [meal]: plan[day][meal].filter(s => s.id !== id) } };
+    setPlan(next);
+    void persistPlan(next);
   };
   const addRandom = (day: string, meal: string) => {
+    if (!recipes.length) return;
     const r = recipes[Math.floor(Math.random() * recipes.length)];
-    const id = `${day}-${meal}-${r.id}-${Date.now()}`;
-    setPlan({ ...plan, [day]: { ...plan[day], [meal]: [...plan[day][meal], { id, recipeId: r.id, portion: 1 }] } });
+    const id = `${day}-${meal}-${r._id}-${Date.now()}`;
+    const next = { ...plan, [day]: { ...plan[day], [meal]: [...plan[day][meal], { id, recipeId: recipeKey(r), portion: 1 }] } };
+    setPlan(next);
+    void persistPlan(next);
   };
   const changePortion = (day: string, meal: string, id: string, d: number) => {
-    setPlan({ ...plan, [day]: { ...plan[day], [meal]: plan[day][meal].map(s => s.id === id ? { ...s, portion: Math.max(0.5, Math.min(4, s.portion + d)) } : s) } });
+    const next = { ...plan, [day]: { ...plan[day], [meal]: plan[day][meal].map(s => s.id === id ? { ...s, portion: Math.max(0.5, Math.min(4, s.portion + d)) } : s) } };
+    setPlan(next);
+    void persistPlan(next);
   };
 
   const dayCalories = (day: string) => mealTypes.reduce((sum, m) =>
-    sum + plan[day][m].reduce((s, slot) => s + (recipes.find(r => r.id === slot.recipeId)!.calories * slot.portion), 0), 0);
+    sum + plan[day][m].reduce((s, slot) => {
+      const recipe = recipes.find(r => recipeLookupKey(slot.recipeId, r));
+      return s + ((recipe?.calories || 0) * slot.portion);
+    }, 0), 0);
 
   return (
     <>
@@ -75,6 +205,8 @@ function MealPlanner() {
         } />
 
       <div className="overflow-x-auto p-4 md:p-8">
+        {loading && <Card className="mb-4 p-4 text-muted-foreground">Loading meal plan...</Card>}
+        {!loading && error && <Card className="mb-4 p-4 text-destructive">{error}</Card>}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <div className="grid min-w-[1100px] grid-cols-[100px_repeat(7,1fr)] gap-3">
             <div />
@@ -92,9 +224,11 @@ function MealPlanner() {
                     <SortableContext items={plan[day][meal].map(s => `${day}|${meal}|${s.id}`)} strategy={verticalListSortingStrategy}>
                       <div className="space-y-2">
                         {plan[day][meal].map(slot => {
-                          const r = recipes.find(x => x.id === slot.recipeId)!;
+                          const r = recipes.find(x => recipeLookupKey(slot.recipeId, x));
+                          if (!r) return null;
+                          const recipeId = recipeKey(r);
                           return <SlotCard key={slot.id} id={`${day}|${meal}|${slot.id}`} recipe={r} portion={slot.portion}
-                            fav={favorites.includes(r.id)} onFav={() => toggleFavorite(r.id)}
+                            fav={favorites.includes(recipeId)} onFav={() => toggleFavorite(recipeId)}
                             onRemove={() => removeSlot(day, meal, slot.id)}
                             onPortion={(d: number) => changePortion(day, meal, slot.id, d)} />;
                         })}

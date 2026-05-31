@@ -2,9 +2,9 @@ const mongoose = require('mongoose');
 
 const macroSchema = new mongoose.Schema(
 	{
-		protein: { type: Number, required: true, min: 0 },
-		carbs: { type: Number, required: true, min: 0 },
-		fat: { type: Number, required: true, min: 0 },
+		protein: { type: Number, default: 0, min: 0 },
+		carbs: { type: Number, default: 0, min: 0 },
+		fat: { type: Number, default: 0, min: 0 },
 	},
 	{ _id: false },
 );
@@ -19,17 +19,21 @@ const ingredientSchema = new mongoose.Schema(
 
 const recipeSchema = new mongoose.Schema(
 	{
-		name: { type: String, required: true, trim: true },
+		externalId: { type: String, required: true, unique: true, index: true, trim: true },
+		name: { type: String, required: true, trim: true, index: true },
 		description: { type: String, required: true, trim: true },
+		image: { type: String, default: '' },
+		sourceUrl: { type: String, default: '' },
 		time: { type: Number, required: true, min: 1 },
 		servings: { type: Number, required: true, min: 1 },
 		calories: { type: Number, required: true, min: 0 },
 		difficulty: { type: String, enum: ['Easy', 'Medium', 'Hard'], default: 'Easy' },
 		tags: [{ type: String, trim: true }],
-		emoji: { type: String, default: '' },
+		emoji: { type: String, default: '🍽️' },
 		ingredients: { type: [ingredientSchema], default: [] },
 		steps: [{ type: String, trim: true }],
-		macros: { type: macroSchema, required: true },
+		macros: { type: macroSchema, default: () => ({}) },
+		lastFetchedAt: { type: Date, default: Date.now },
 	},
 	{ timestamps: true },
 );

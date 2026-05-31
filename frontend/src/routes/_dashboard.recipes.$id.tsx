@@ -1,29 +1,129 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { Heart, Clock, Users, Bookmark, ArrowLeft, Flame } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Heart, Clock, Users, Bookmark, ArrowLeft, Flame, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { recipes } from "@/lib/mock-data";
 import { useApp } from "@/context/AppContext";
+import { apiGet, apiPatch } from "@/lib/api";
 
 export const Route = createFileRoute("/_dashboard/recipes/$id")({ component: RecipeDetail });
 
+type Recipe = {
+  _id: string;
+  externalId?: string;
+  name: string;
+  description: string;
+  image?: string;
+  sourceUrl?: string;
+  time: number;
+  servings: number;
+  calories: number;
+  difficulty: "Easy" | "Medium" | "Hard";
+  tags: string[];
+  emoji?: string;
+  ingredients: { food: string; amount: string }[];
+  steps: string[];
+  macros: { protein: number; carbs: number; fat: number };
+};
+
+type MealPlanDoc = {
+  _id: string;
+  userId: string;
+  weekStart: string;
+  days: Array<{
+    day: string;
+    meals: {
+      breakfast: Array<{ recipeId: string; portion: number }>;
+      lunch: Array<{ recipeId: string; portion: number }>;
+      dinner: Array<{ recipeId: string; portion: number }>;
+    };
+  }>;
+};
+
+const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function recipeKey(recipe: Recipe) {
+  return recipe.externalId || recipe._id;
+}
+
 function RecipeDetail() {
   const { id } = useParams({ from: "/_dashboard/recipes/$id" });
-  const r = recipes.find(x => x.id === id);
-  const { favorites, toggleFavorite, bookmarks, toggleBookmark } = useApp();
+  const { favorites, toggleFavorite, bookmarks, toggleBookmark, user } = useApp();
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!r) return (
+  useEffect(() => {
+    let mounted = true;
+    const loadRecipe = async () => {
+      try {
+        const data = await apiGet<Recipe>(`/recipes/${id}`);
+        if (!mounted) return;
+        setRecipe(data);
+        setError(null);
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || "Failed to load recipe");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadRecipe();
+    return () => {
+      mounted = false;
+    };
+  }, [id]);
+
+  const addToPlanner = async () => {
+    if (!recipe) return;
+    try {
+      const plans = await apiGet<MealPlanDoc[]>("/meal-plans");
+      const selected = user?._id ? plans.find((plan) => plan.userId === user._id) || plans[0] || null : plans[0] || null;
+      if (!selected) return;
+
+      const today = weekDays[new Date().getDay()];
+      const nextDays = selected.days.map((day) => {
+        if (day.day !== today) return day;
+        return {
+          ...day,
+          meals: {
+            ...day.meals,
+            lunch: [...(day.meals.lunch || []), { recipeId: recipeKey(recipe), portion: 1 }],
+          },
+        };
+      });
+
+      await apiPatch(`/meal-plans/${selected._id}`, {
+        weekStart: selected.weekStart,
+        days: nextDays,
+      });
+    } catch (err) {
+      console.error("Failed to add recipe to planner", err);
+    }
+  };
+
+  if (loading) return (
     <div className="p-8">
-      <p>Recipe not found.</p>
+      <p className="text-muted-foreground">Loading recipe...</p>
+    </div>
+  );
+
+  if (error || !recipe) return (
+    <div className="p-8">
+      <p>{error || "Recipe not found."}</p>
       <Button asChild className="mt-4"><Link to="/recipes">Back</Link></Button>
     </div>
   );
 
+  const r = recipe;
+  const key = recipeKey(r);
+
   return (
     <div>
-      <div className="relative grid aspect-[16/6] place-items-center text-9xl gradient-hero">
-        {r.emoji}
+      <div className="relative grid aspect-[16/6] place-items-center overflow-hidden gradient-hero">
+        {r.image ? <img src={r.image} alt={r.name} className="h-full w-full object-cover" /> : <div className="text-9xl">{r.emoji || "🍽️"}</div>}
         <Button asChild variant="secondary" className="absolute left-4 top-4 rounded-full">
           <Link to="/recipes"><ArrowLeft className="mr-1 h-4 w-4" /> Back</Link>
         </Button>
@@ -34,15 +134,19 @@ function RecipeDetail() {
             <div className="flex flex-wrap gap-1.5">{r.tags.map(t => <Badge key={t} variant="secondary" className="rounded-full">{t}</Badge>)}</div>
             <h1 className="mt-3 font-display text-4xl font-bold">{r.name}</h1>
             <p className="mt-2 max-w-xl text-muted-foreground">{r.description}</p>
+            {r.sourceUrl && <a href={r.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-primary underline">View source</a>}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="rounded-full" onClick={() => toggleBookmark(r.id)}>
-              <Bookmark className={`mr-1 h-4 w-4 ${bookmarks.includes(r.id) ? "fill-foreground" : ""}`} />
-              {bookmarks.includes(r.id) ? "Saved" : "Save"}
+            <Button variant="outline" className="rounded-full" onClick={() => toggleBookmark(key)}>
+              <Bookmark className={`mr-1 h-4 w-4 ${bookmarks.includes(key) ? "fill-foreground" : ""}`} />
+              {bookmarks.includes(key) ? "Saved" : "Save"}
             </Button>
-            <Button className="rounded-full" onClick={() => toggleFavorite(r.id)}>
-              <Heart className={`mr-1 h-4 w-4 ${favorites.includes(r.id) ? "fill-current" : ""}`} />
-              {favorites.includes(r.id) ? "Favorited" : "Favorite"}
+            <Button className="rounded-full" onClick={() => toggleFavorite(key)}>
+              <Heart className={`mr-1 h-4 w-4 ${favorites.includes(key) ? "fill-current" : ""}`} />
+              {favorites.includes(key) ? "Favorited" : "Favorite"}
+            </Button>
+            <Button variant="secondary" className="rounded-full" onClick={addToPlanner}>
+              <Plus className="mr-1 h-4 w-4" /> Add to planner
             </Button>
           </div>
         </div>

@@ -25,6 +25,8 @@ const userSchema = new mongoose.Schema(
 		},
 		subscriptionTier: { type: String, enum: ['Starter', 'Plus', 'Pro'], default: 'Starter' },
 		onboardingCompleted: { type: Boolean, default: false },
+			resetPasswordToken: { type: String },
+			resetPasswordExpires: { type: Date },
 	},
 	{ timestamps: true },
 );

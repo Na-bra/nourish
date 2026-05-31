@@ -1,26 +1,70 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Search, Filter } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/dashboard/PageHeader";
-import { foods } from "@/lib/mock-data";
+import { apiGet } from "@/lib/api";
 
 export const Route = createFileRoute("/_dashboard/food-database")({ component: FoodDB });
+
+type Food = {
+  _id: string;
+  name: string;
+  category: string;
+  calories: number;
+  serving: {
+    amount?: number;
+    unit?: string;
+  };
+  macros: { protein: number; carbs: number; fat: number };
+  emoji?: string;
+  source?: "manual" | "api";
+  verified?: boolean;
+};
 
 function FoodDB() {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>("All");
+  const [foods, setFoods] = useState<Food[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+
+    const loadFoods = async () => {
+      try {
+        const query = q.trim();
+        const endpoint = query ? `/foods/search?q=${encodeURIComponent(query)}` : "/foods";
+        const data = await apiGet<Food[]>(endpoint);
+        if (!mounted) return;
+        setFoods(data || []);
+        setError(null);
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || "Failed to load foods");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    const timer = window.setTimeout(loadFoods, q.trim() ? 300 : 0);
+    return () => {
+      mounted = false;
+      window.clearTimeout(timer);
+    };
+  }, [q]);
+
   const cats = ["All", ...Array.from(new Set(foods.map(f => f.category)))];
-  const filtered = useMemo(() => foods.filter(f =>
-    (cat === "All" || f.category === cat) && f.name.toLowerCase().includes(q.toLowerCase())
-  ), [q, cat]);
+  const filtered = useMemo(() => foods.filter(f => cat === "All" || f.category === cat), [foods, cat]);
 
   return (
     <>
-      <PageHeader title="Food database" subtitle="Search 100,000+ foods with detailed nutrition facts." />
+      <PageHeader title="Food database" subtitle="Search USDA-backed foods cached in MongoDB with detailed nutrition facts." />
       <div className="space-y-6 p-4 md:p-8">
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
@@ -38,13 +82,20 @@ function FoodDB() {
           ))}
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(f => (
-            <Card key={f.id} className="p-5 transition-shadow hover:shadow-soft">
+          {loading && <p className="col-span-full py-12 text-center text-muted-foreground">Loading foods...</p>}
+          {!loading && error && <p className="col-span-full py-12 text-center text-destructive">{error}</p>}
+          {!loading && !error && filtered.map(f => (
+            <Card key={f._id} className="p-5 transition-shadow hover:shadow-soft">
               <div className="flex items-start gap-3">
-                <div className="grid h-14 w-14 place-items-center rounded-xl bg-secondary text-3xl">{f.emoji}</div>
+                <div className="grid h-14 w-14 place-items-center rounded-xl bg-secondary text-3xl">{f.emoji || "🍽️"}</div>
                 <div className="flex-1">
-                  <div className="font-display font-semibold">{f.name}</div>
-                  <div className="text-xs text-muted-foreground">{f.serving} • {f.category}</div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-display font-semibold">{f.name}</div>
+                    <Badge variant="secondary" className="shrink-0">
+                      {f.source === "manual" ? "Manual" : "USDA"}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{formatServing(f.serving)} • {f.category}</div>
                   <div className="mt-1 font-display text-lg font-bold">{f.calories} <span className="text-xs font-normal text-muted-foreground">kcal</span></div>
                 </div>
               </div>
@@ -55,11 +106,18 @@ function FoodDB() {
               </div>
             </Card>
           ))}
-          {!filtered.length && <p className="col-span-full py-12 text-center text-muted-foreground">No foods found.</p>}
+          {!loading && !error && !filtered.length && <p className="col-span-full py-12 text-center text-muted-foreground">No foods found.</p>}
         </div>
       </div>
     </>
   );
+}
+
+function formatServing(serving: Food["serving"]) {
+  if (!serving) return "100 g";
+  const amount = serving.amount ?? 100;
+  const unit = serving.unit || "g";
+  return `${amount} ${unit}`;
 }
 
 function Macro({ label, v, color }: { label: string; v: number; color: string }) {

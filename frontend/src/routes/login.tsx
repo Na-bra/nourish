@@ -5,6 +5,8 @@ import { AuthShell } from "@/components/layout/AuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { apiPost, setToken } from "@/lib/api";
+import { useApp } from "@/context/AppContext";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
@@ -13,10 +15,20 @@ type Form = { email: string; password: string };
 function Login() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<Form>();
   const navigate = useNavigate();
-  const onSubmit = async (_: Form) => {
-    await new Promise(r => setTimeout(r, 600));
-    toast.success("Welcome back!");
-    navigate({ to: "/dashboard" });
+  const { setUser } = useApp();
+  const onSubmit = async (values: Form) => {
+    try {
+      const result = await apiPost<{ user: { name: string; email: string; avatar?: string; _id?: string }; token: string }>("/auth/login", {
+        email: values.email.trim().toLowerCase(),
+        password: values.password,
+      });
+      setToken(result.token);
+      setUser(result.user);
+      toast.success("Welcome back!");
+      navigate({ to: "/dashboard" });
+    } catch (err: any) {
+      toast.error(err?.message || "Login failed. Please check your credentials.");
+    }
   };
   return (
     <AuthShell title="Welcome back" subtitle="Sign in to continue your journey."
