@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useRef, useState } from "react";
 import { Bell, Shield, User as UserIcon, Salad } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { useApp } from "@/context/AppContext";
 import { toast } from "sonner";
-import { apiPatch } from "@/lib/api";
+import { apiPatch, apiGet, apiDelete, setToken } from "@/lib/api";
 
 export const Route = createFileRoute("/_dashboard/profile")({ component: Profile });
 
@@ -18,27 +18,84 @@ const diets = ["Balanced", "Vegetarian", "Vegan", "Keto", "Paleo", "Mediterranea
 const allergies = ["Dairy", "Gluten", "Nuts", "Shellfish", "Eggs", "Soy"];
 
 function Profile() {
-  const { user } = useApp();
+  const { user, setUser } = useApp();
+  const navigate = useNavigate();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatar, setAvatar] = useState(user?.avatar || "");
   const [diet, setDiet] = useState(user?.diet || "balanced");
   const [picked, setPicked] = useState<string[]>(user?.allergies || []);
   const [prefs, setPrefs] = useState(user?.notifications || { meal: true, water: true, weekly: false, promo: false });
   const [name, setName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
 
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setAvatar(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
   const saveProfile = async () => {
     if (!user?._id) {
       toast.error("Please sign in first");
       return;
     }
+    try {
+      const updated = await apiPatch(`/users/${user._id}`, {
+        name,
+        email,
+        diet,
+        allergies: picked,
+        notifications: prefs,
+        avatar,
+      });
+      setUser({ ...user, ...updated });
+      toast.success("Settings saved");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save settings");
+    }
+  };
 
-    await apiPatch(`/users/${user._id}`, {
-      name,
-      email,
-      diet,
-      allergies: picked,
-      notifications: prefs,
-    });
-    toast.success("Settings saved");
+  const exportData = async () => {
+    if (!user?._id) return;
+    try {
+      const [userData, mealPlans, progress, groceryLists] = await Promise.all([
+        apiGet(`/users/${user._id}`),
+        apiGet("/meal-plans"),
+        apiGet("/progress"),
+        apiGet("/grocery-lists"),
+      ]);
+      const blob = new Blob(
+        [JSON.stringify({ user: userData, mealPlans, progress, groceryLists }, null, 2)],
+        { type: "application/json" }
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nourish-export.json";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Data exported!");
+    } catch {
+      toast.error("Export failed");
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!user?._id) return;
+    const confirmed = window.confirm(
+      "Are you sure you want to delete your account? This cannot be undone."
+    );
+    if (!confirmed) return;
+    try {
+      await apiDelete(`/users/${user._id}`);
+      setToken(null);
+      setUser(null);
+      navigate({ to: "/login" });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete account");
+    }
   };
 
   return (
@@ -48,13 +105,18 @@ function Profile() {
       <div className="space-y-6 p-4 md:p-8">
         <Card className="p-6">
           <div className="flex items-center gap-4">
-            <div className="grid h-20 w-20 place-items-center rounded-full bg-primary/10 text-3xl">👤</div>
+            <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-full bg-primary/10 text-3xl">
+              {avatar
+                ? <img src={avatar} alt="Avatar" className="h-full w-full object-cover" />
+                : "👤"}
+            </div>
             <div className="flex-1">
               <h3 className="font-display text-xl font-semibold">{user?.name}</h3>
               <p className="text-sm text-muted-foreground">{user?.email}</p>
               <Badge variant="secondary" className="mt-2 rounded-full">{user?.subscriptionTier || "Starter"} member</Badge>
             </div>
-            <Button variant="outline">Edit avatar</Button>
+            <Button variant="outline" onClick={() => avatarInputRef.current?.click()}>Edit avatar</Button>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
         </Card>
 
@@ -112,8 +174,10 @@ function Profile() {
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>Your data is encrypted and never sold. Download or delete anytime.</p>
             <div className="flex gap-2 pt-2">
-              <Button variant="outline" size="sm">Export data</Button>
-              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">Delete account</Button>
+              <Button variant="outline" size="sm" onClick={exportData}>Export data</Button>
+              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={deleteAccount}>
+                Delete account
+              </Button>
             </div>
           </div>
         </Section>

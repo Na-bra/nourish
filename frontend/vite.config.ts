@@ -20,7 +20,7 @@ export default defineConfig({
       proxy: {
         // proxy /api to backend during development
         '/api': {
-          target: env.BACKEND_URL || 'http://localhost:5000',
+          target: 'http://localhost:5001',
           changeOrigin: true,
           secure: false,
         },
