@@ -38,4 +38,8 @@ const recipeSchema = new mongoose.Schema(
 	{ timestamps: true },
 );
 
+// text index for search and index for freshness queries
+recipeSchema.index({ name: 'text', tags: 'text' });
+recipeSchema.index({ lastFetchedAt: -1 });
+
 module.exports = mongoose.model('Recipe', recipeSchema);

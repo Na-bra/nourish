@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, Shield, User as UserIcon, Salad } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { useApp } from "@/context/AppContext";
 import { toast } from "sonner";
-import { apiPatch } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 export const Route = createFileRoute("/_dashboard/profile")({ component: Profile });
 
@@ -24,6 +24,27 @@ function Profile() {
   const [prefs, setPrefs] = useState(user?.notifications || { meal: true, water: true, weekly: false, promo: false });
   const [name, setName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [newType, setNewType] = useState("meal_reminder");
+  const [newSchedule, setNewSchedule] = useState("daily:08:00");
+  const [testEmail, setTestEmail] = useState(user?.email || "");
+
+  const loadNotifications = async () => {
+    setLoadingNotifications(true);
+    try {
+      const list = await apiGet<any[]>("/notifications");
+      setNotifications(Array.isArray(list) ? list : []);
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to load notifications");
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+  }, []);
 
   const saveProfile = async () => {
     if (!user?._id) {
@@ -39,6 +60,49 @@ function Profile() {
       notifications: prefs,
     });
     toast.success("Settings saved");
+  };
+
+  const createNotification = async () => {
+    try {
+      await apiPost("/notifications", {
+        type: newType,
+        enabled: true,
+        schedule: newSchedule,
+      });
+      toast.success("Notification rule created");
+      loadNotifications();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to create notification");
+    }
+  };
+
+  const removeNotification = async (id: string) => {
+    try {
+      await apiDelete(`/notifications/${id}`);
+      toast.success("Notification deleted");
+      setNotifications((curr) => curr.filter((n) => n._id !== id));
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to delete notification");
+    }
+  };
+
+  const sendTestNotificationEmail = async () => {
+    try {
+      await apiPost("/notifications/send-test", { to: testEmail || undefined });
+      toast.success("Test email sent");
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to send test email");
+    }
+  };
+
+  const runSchedulerTick = async () => {
+    try {
+      await apiPost("/notifications/run-tick", {});
+      toast.success("Scheduler tick executed");
+      loadNotifications();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to run scheduler tick");
+    }
   };
 
   return (
@@ -106,6 +170,62 @@ function Profile() {
               <Switch checked={prefs[n.k]} onCheckedChange={(v) => setPrefs({ ...prefs, [n.k]: v })} />
             </div>
           ))}
+
+          <div className="mt-6 rounded-xl border p-4">
+            <div className="mb-2 text-sm font-semibold">Notification Rules</div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <Label>Type</Label>
+                <select
+                  className="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  value={newType}
+                  onChange={(e) => setNewType(e.target.value)}
+                >
+                  <option value="meal_reminder">Meal reminder</option>
+                  <option value="hydration">Hydration</option>
+                  <option value="weekly_summary">Weekly summary</option>
+                  <option value="promo">Promotional</option>
+                </select>
+              </div>
+              <div>
+                <Label>Schedule</Label>
+                <Input value={newSchedule} onChange={(e) => setNewSchedule(e.target.value)} className="mt-1.5" placeholder="daily:08:00" />
+              </div>
+              <div className="flex items-end">
+                <Button onClick={createNotification} className="w-full">Add rule</Button>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {loadingNotifications ? <div className="text-xs text-muted-foreground">Loading rules...</div> : null}
+              {!loadingNotifications && !notifications.length ? (
+                <div className="text-xs text-muted-foreground">No notification rules yet.</div>
+              ) : null}
+              {notifications.map((n) => (
+                <div key={n._id} className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <div className="text-sm font-medium">{String(n.type).replace(/_/g, " ")}</div>
+                    <div className="text-xs text-muted-foreground">{n.schedule || "default"}</div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => removeNotification(n._id)}>Delete</Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-xl border p-4">
+            <div className="mb-2 text-sm font-semibold">Email</div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="sm:col-span-2">
+                <Label>Test email recipient</Label>
+                <Input value={testEmail} onChange={(e) => setTestEmail(e.target.value)} className="mt-1.5" placeholder="you@example.com" />
+              </div>
+              <div className="flex items-end gap-2">
+                <Button onClick={sendTestNotificationEmail} className="flex-1">Send test email</Button>
+                <Button variant="outline" onClick={runSchedulerTick}>Run tick</Button>
+              </div>
+            </div>
+          </div>
         </Section>
 
         <Section icon={Shield} title="Privacy & data">

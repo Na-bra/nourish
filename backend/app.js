@@ -16,6 +16,8 @@ const mealPlanRoutes = require('./routes/mealPlanRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const groceryListRoutes = require('./routes/groceryListRoutes');
 const contentRoutes = require('./routes/contentRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const emailCampaignRoutes = require('./routes/emailCampaignRoutes');
 
 const app = express();
 
@@ -51,6 +53,8 @@ app.use('/api/meal-plans', mealPlanRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/grocery-lists', groceryListRoutes);
 app.use('/api/content', contentRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/email-campaigns', emailCampaignRoutes);
 
 app.get('/', (req, res) => res.status(200).json({ status: 'ok' }));
 

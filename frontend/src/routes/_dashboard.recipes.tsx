@@ -43,6 +43,13 @@ type MealPlanDoc = {
   }>;
 };
 
+type RecipeSuggestion = {
+  id: string;
+  name: string;
+  emoji?: string;
+  tags?: string[];
+};
+
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function recipeKey(recipe: Recipe) {
@@ -60,6 +67,10 @@ function Recipes() {
   const [diet, setDiet] = useState("");
   const [cuisine, setCuisine] = useState("");
   const [maxCalories, setMaxCalories] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit] = useState(12);
+  const [suggestions, setSuggestions] = useState<RecipeSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,7 +80,13 @@ function Recipes() {
     if (diet.trim()) params.set("diet", diet.trim());
     if (cuisine.trim()) params.set("cuisine", cuisine.trim());
     if (maxCalories.trim()) params.set("maxCalories", maxCalories.trim());
+    params.set("page", String(page));
+    params.set("limit", String(limit));
     return params.toString();
+  }, [query, diet, cuisine, maxCalories, page, limit]);
+
+  useEffect(() => {
+    setPage(1);
   }, [query, diet, cuisine, maxCalories]);
 
   useEffect(() => {
@@ -94,6 +111,31 @@ function Recipes() {
       window.clearTimeout(timer);
     };
   }, [searchParams]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setSuggestions([]);
+      return;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const data = await apiGet<RecipeSuggestion[]>(`/recipes/search/suggestions?q=${encodeURIComponent(q)}&limit=8`);
+        if (!active) return;
+        setSuggestions(Array.isArray(data) ? data : []);
+      } catch {
+        if (!active) return;
+        setSuggestions([]);
+      }
+    }, 180);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
 
   const addToPlanner = async (recipe: Recipe) => {
     try {
@@ -129,7 +171,32 @@ function Recipes() {
         <div className="grid gap-3 md:grid-cols-4">
           <div className="relative md:col-span-2">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search recipes" className="pl-10" />
+            <Input
+              value={query}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => window.setTimeout(() => setShowSuggestions(false), 120)}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search recipes"
+              className="pl-10"
+            />
+            {showSuggestions && suggestions.length > 0 ? (
+              <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-background shadow-soft">
+                {suggestions.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-muted"
+                    onClick={() => {
+                      setQuery(s.name);
+                      setShowSuggestions(false);
+                    }}
+                  >
+                    <span className="truncate">{s.emoji || "🍽️"} {s.name}</span>
+                    <span className="ml-2 truncate text-xs text-muted-foreground">{(s.tags || []).slice(0, 2).join(", ")}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <Input value={diet} onChange={(e) => setDiet(e.target.value)} placeholder="Diet e.g. vegetarian" />
           <Input value={cuisine} onChange={(e) => setCuisine(e.target.value)} placeholder="Cuisine e.g. italian" />
@@ -184,6 +251,11 @@ function Recipes() {
           </Card>
         ))}
         {!loading && !error && !recipes.length && <p className="col-span-full py-12 text-center text-muted-foreground">No recipes found.</p>}
+      </div>
+      <div className="flex items-center justify-center gap-2 px-4 pb-8 md:px-8">
+        <Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</Button>
+        <span className="text-sm text-muted-foreground">Page {page}</span>
+        <Button variant="outline" size="sm" disabled={loading || recipes.length < limit} onClick={() => setPage((p) => p + 1)}>Next</Button>
       </div>
     </>
   );

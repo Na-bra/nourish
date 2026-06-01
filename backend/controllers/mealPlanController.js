@@ -44,15 +44,43 @@ async function buildDefaultMealPlan(userId) {
 	return MealPlan.create({ userId, weekStart: startOfCurrentWeek(), days });
 }
 
+const { buildCsv } = require('../utils/csvHelper');
+
 const getMealPlans = async (req, res) => {
 	try {
-		if (req.user) {
-			let mealPlan = await MealPlan.findOne({ userId: req.user._id }).sort({ createdAt: -1 });
-			if (!mealPlan) mealPlan = await buildDefaultMealPlan(req.user._id);
-			return res.json([mealPlan]);
+		const { weekStart, userId, recipeId } = req.query;
+
+		const criteria = {};
+		if (weekStart) {
+			const start = new Date(weekStart);
+			if (!isNaN(start.getTime())) criteria.weekStart = start;
+		}
+		if (userId) criteria.userId = userId;
+
+		if (req.user && !userId) {
+			criteria.userId = req.user._id;
 		}
 
-		const mealPlans = await MealPlan.find().sort({ createdAt: -1 });
+		let mealPlans = await MealPlan.find(criteria).sort({ createdAt: -1 });
+
+		if (recipeId) {
+			mealPlans = mealPlans.filter((mp) => {
+				for (const d of mp.days || []) {
+					for (const slot of ['breakfast', 'lunch', 'dinner']) {
+						const items = (d.meals && d.meals[slot]) || [];
+						if (items.some((it) => String(it.recipeId) === String(recipeId))) return true;
+					}
+				}
+				return false;
+			});
+		}
+
+		// if user requested only their current plan and none exists, build default
+		if (req.user && (!mealPlans || mealPlans.length === 0)) {
+			const defaultPlan = await buildDefaultMealPlan(req.user._id);
+			return res.json([defaultPlan]);
+		}
+
 		return res.json(mealPlans);
 	} catch (error) {
 		return res.status(500).json({ message: 'Failed to fetch meal plans' });
@@ -120,10 +148,43 @@ const deleteMealPlan = async (req, res) => {
 	}
 };
 
+const exportMealPlanCsv = async (req, res) => {
+	try {
+		const mealPlan = await MealPlan.findById(req.params.id);
+		if (!mealPlan) return res.status(404).json({ message: 'Meal plan not found' });
+		if (req.user && String(mealPlan.userId) !== String(req.user._id)) return res.status(403).json({ message: 'Forbidden' });
+
+		// gather recipe details
+		const recipeIds = new Set();
+		for (const d of mealPlan.days || []) {
+			for (const slot of ['breakfast', 'lunch', 'dinner']) {
+				const items = (d.meals && d.meals[slot]) || [];
+				for (const it of items) recipeIds.add(String(it.recipeId));
+			}
+		}
+
+		const recipesById = {};
+		if (recipeIds.size) {
+			const ids = Array.from(recipeIds);
+			// fetch recipes by externalId or _id
+			const found = await Recipe.find({ $or: [{ externalId: { $in: ids } }, { _id: { $in: ids.filter((i) => /^[a-f0-9]{24}$/i.test(i)) } }] });
+			for (const r of found) recipesById[r.externalId || String(r._id)] = r;
+		}
+
+		const csv = buildCsv(mealPlan, recipesById);
+		res.setHeader('Content-Type', 'text/csv');
+		res.setHeader('Content-Disposition', `attachment; filename="mealplan-${mealPlan._id}.csv"`);
+		return res.send(csv);
+	} catch (error) {
+		return res.status(500).json({ message: 'Failed to export meal plan' });
+	}
+};
+
 module.exports = {
 	getMealPlans,
 	getMealPlanById,
 	createMealPlan,
 	updateMealPlan,
 	deleteMealPlan,
+	exportMealPlanCsv,
 };
