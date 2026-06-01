@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/dashboard/PageHeader";
-import { apiGet, apiPatch } from "@/lib/api";
+import { apiGet, apiPatch, apiDelete } from "@/lib/api";
 import { useApp } from "@/context/AppContext";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_dashboard/grocery")({ component: Grocery });
 
@@ -24,6 +25,7 @@ function Grocery() {
   const [groceryLists, setGroceryLists] = useState<GroceryListDoc[]>([]);
   const [groceryListId, setGroceryListId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -88,14 +90,57 @@ function Grocery() {
     }
   };
 
+  const regenerate = async () => {
+    if (!groceryListId || regenerating) return;
+    setRegenerating(true);
+    try {
+      await apiDelete(`/grocery-lists/${groceryListId}`);
+      const data = await apiGet<GroceryListDoc[]>("/grocery-lists");
+      setGroceryLists(data || []);
+      const sel = user?._id ? data.find((g) => g.userId === user._id) || data[0] : data[0];
+      setGroceryListId(sel?._id || null);
+      setError(null);
+      toast.success("Grocery list regenerated from your meal plan");
+    } catch (err: any) {
+      setError(err?.message || "Failed to regenerate grocery list");
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const share = async () => {
+    if (!selected) return;
+    const text = selected.categories
+      .flatMap((c) => [`${c.name}:`, ...c.items.map((i) => `  • ${i.name} (${i.qty})`)])
+      .join("\n");
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "My Grocery List", text });
+      } catch {}
+    } else {
+      try {
+        await navigator.clipboard.writeText(`Grocery List\n\n${text}`);
+        toast.success("Copied to clipboard!");
+      } catch {
+        toast.error("Could not copy to clipboard");
+      }
+    }
+  };
+
   return (
     <>
       <PageHeader title="Grocery list" subtitle={`${checkedCount} of ${total} items checked • generated from this week's meal plan`}
         action={
           <div className="flex gap-2">
-            <Button variant="outline" className="rounded-full"><RefreshCw className="mr-1 h-4 w-4" /> Regenerate</Button>
-            <Button variant="outline" className="rounded-full" onClick={() => window.print()}><Printer className="mr-1 h-4 w-4" /> Print</Button>
-            <Button className="rounded-full"><Share2 className="mr-1 h-4 w-4" /> Share</Button>
+            <Button variant="outline" className="rounded-full" onClick={regenerate} disabled={regenerating}>
+              <RefreshCw className={`mr-1 h-4 w-4 ${regenerating ? "animate-spin" : ""}`} /> Regenerate
+            </Button>
+            <Button variant="outline" className="rounded-full" onClick={() => window.print()}>
+              <Printer className="mr-1 h-4 w-4" /> Print
+            </Button>
+            <Button className="rounded-full" onClick={share}>
+              <Share2 className="mr-1 h-4 w-4" /> Share
+            </Button>
           </div>
         } />
       {loading && <div className="px-4 text-sm text-muted-foreground md:px-8">Loading grocery list...</div>}

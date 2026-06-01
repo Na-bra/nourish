@@ -1,8 +1,20 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, Fragment, useEffect } from "react";
 import { Heart, Printer, Plus, GripVertical, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -91,10 +103,31 @@ function recipeLookupKey(slotRecipeId: string, recipe: Recipe) {
   return recipe.externalId === slotRecipeId || recipe._id === slotRecipeId;
 }
 
+function getMondayOfWeek(offset: number): Date {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday + offset * 7);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function getWeekLabel(offset: number): string {
+  if (offset === 0) return "This week";
+  const monday = getMondayOfWeek(offset);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(monday)} – ${fmt(sunday)}`;
+}
+
 function MealPlanner() {
   const navigate = useNavigate();
   const [plan, setPlan] = useState<Plan>(makeEmptyPlan);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [allMealPlans, setAllMealPlans] = useState<MealPlanDoc[]>([]);
+  const [weekOffset, setWeekOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mealPlanId, setMealPlanId] = useState<string | null>(null);
@@ -123,6 +156,7 @@ function MealPlanner() {
     }
   };
 
+  // Load recipes and all meal plans once on mount / user change
   useEffect(() => {
     let mounted = true;
 
@@ -136,10 +170,7 @@ function MealPlanner() {
         if (!mounted) return;
 
         setRecipes(recipesData || []);
-        const selected = user?._id ? mealPlans.find((p) => p.userId === user._id) : mealPlans[0] || null;
-        setMealPlanId(selected?._id || null);
-        setWeekStart(selected?.weekStart || null);
-        setPlan(toPlan(selected || null));
+        setAllMealPlans(mealPlans || []);
         setError(null);
       } catch (err: any) {
         if (!mounted) return;
@@ -154,6 +185,38 @@ function MealPlanner() {
       mounted = false;
     };
   }, [user?._id]);
+
+  // Select the right plan whenever weekOffset or allMealPlans changes
+  useEffect(() => {
+    if (!allMealPlans.length) {
+      if (weekOffset !== 0) {
+        setPlan(makeEmptyPlan());
+        setMealPlanId(null);
+        setWeekStart(null);
+      }
+      return;
+    }
+
+    const targetMonday = getMondayOfWeek(weekOffset);
+    const matched = allMealPlans.find((p) => {
+      if (!p.weekStart) return false;
+      const d = new Date(p.weekStart);
+      return Math.abs(d.getTime() - targetMonday.getTime()) < 24 * 3600 * 1000;
+    });
+
+    // For current week fall back to the user's plan; other weeks show empty if no match
+    const fallback =
+      weekOffset === 0
+        ? (user?._id ? allMealPlans.find((p) => p.userId === user._id) : allMealPlans[0]) ||
+          allMealPlans[0] ||
+          null
+        : null;
+
+    const selected = matched || fallback;
+    setMealPlanId(selected?._id || null);
+    setWeekStart(selected?.weekStart || null);
+    setPlan(toPlan(selected || null));
+  }, [weekOffset, allMealPlans, user?._id]);
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -173,6 +236,7 @@ function MealPlanner() {
     setPlan(next);
     void persistPlan(next);
   };
+
   const addRandom = (day: string, meal: string) => {
     if (!recipes.length) return;
     const r = recipes[Math.floor(Math.random() * recipes.length)];
@@ -181,6 +245,7 @@ function MealPlanner() {
     setPlan(next);
     void persistPlan(next);
   };
+
   const changePortion = (day: string, meal: string, id: string, d: number) => {
     const next = { ...plan, [day]: { ...plan[day], [meal]: plan[day][meal].map(s => s.id === id ? { ...s, portion: Math.max(0.5, Math.min(4, s.portion + d)) } : s) } };
     setPlan(next);
@@ -198,10 +263,18 @@ function MealPlanner() {
       <PageHeader title="Weekly meal planner" subtitle="Drag to reorder. Click ＋ to add. Print for the fridge."
         action={
           <div className="flex gap-2">
-            <Button variant="outline" className="rounded-full"><ChevronLeft className="h-4 w-4" /></Button>
-            <Button variant="outline" className="rounded-full">This week</Button>
-            <Button variant="outline" className="rounded-full"><ChevronRight className="h-4 w-4" /></Button>
-            <Button variant="outline" className="rounded-full" onClick={() => window.print()}><Printer className="mr-1 h-4 w-4" /> Print</Button>
+            <Button variant="outline" className="rounded-full" onClick={() => setWeekOffset((o) => o - 1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" className="rounded-full" onClick={() => setWeekOffset(0)}>
+              {getWeekLabel(weekOffset)}
+            </Button>
+            <Button variant="outline" className="rounded-full" onClick={() => setWeekOffset((o) => o + 1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" className="rounded-full" onClick={() => window.print()}>
+              <Printer className="mr-1 h-4 w-4" /> Print
+            </Button>
           </div>
         } />
 
