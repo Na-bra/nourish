@@ -10,6 +10,7 @@ import { loadEnv } from "vite";
 // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
 // @cloudflare/vite-plugin builds from this — wrangler.jsonc main alone is insufficient.
 const env = loadEnv(process.env.NODE_ENV || "development", process.cwd(), "");
+const api = 'https://nourish-backend-five.vercel.app'
 
 export default defineConfig({
   tanstackStart: {
@@ -20,7 +21,7 @@ export default defineConfig({
       proxy: {
         // proxy /api to backend during development
         '/api': {
-          target: 'http://localhost:5001',
+          target: api,
           changeOrigin: true,
           secure: false,
         },
