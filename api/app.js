@@ -22,7 +22,7 @@ const emailCampaignRoutes = require('./routes/emailCampaignRoutes');
 const app = express();
 
 // CORS: allow frontend origin from env or default to allow all in dev
-let frontendOrigin = process.env.FRONTEND_URL || 'http://localhost:8080';
+let frontendOrigin = 'https://nourish-1.onrender.com';
 if (frontendOrigin && frontendOrigin !== '*') {
 	// normalize: remove trailing slash if present
 	frontendOrigin = frontendOrigin.replace(/\/+$/, '');
