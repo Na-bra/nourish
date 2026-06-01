@@ -21,7 +21,7 @@ export default defineConfig({
       proxy: {
         // proxy /api to backend during development
         '/api': {
-          target: 'https://nourish-backend-7cj1.onrender.com',
+          target: "https://nourish-backend-7cj1.onrender.com",
           changeOrigin: true,
           secure: false,
         },
