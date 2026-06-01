@@ -10,6 +10,7 @@ const {
 const router = express.Router();
 
 router.get('/', getMealPlans);
+router.get('/:id/export', require('../controllers/mealPlanController').exportMealPlanCsv);
 router.get('/:id', getMealPlanById);
 router.post('/', createMealPlan);
 router.patch('/:id', updateMealPlan);
