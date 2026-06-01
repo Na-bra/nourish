@@ -1,19 +1,27 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
 import { Bell, Shield, User as UserIcon, Salad } from "lucide-react";
+
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { useApp } from "@/context/AppContext";
+
 import { toast } from "sonner";
-import { apiPatch, apiGet, apiDelete, setToken } from "@/lib/api";
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+
+import {
+  apiDelete,
+  apiGet,
+  apiPatch,
+  apiPost,
+  setToken,
+} from "@/lib/api";
 
 export const Route = createFileRoute("/_dashboard/profile")({ component: Profile });
 
