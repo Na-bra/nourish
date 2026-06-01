@@ -13,6 +13,21 @@ const weightProgressSchema = new mongoose.Schema(
 	{
 		week: { type: String, required: true, trim: true },
 		weight: { type: Number, required: true, min: 0 },
+		timestamp: { type: Date, default: Date.now },
+	},
+	{ _id: false },
+);
+
+const dailyHabitLogSchema = new mongoose.Schema(
+	{
+		date: { type: Date, required: true },
+		habitType: {
+			type: String,
+			required: true,
+			enum: ['water', 'exercise', 'sleep', 'meal_adherence'],
+		},
+		status: { type: String, enum: ['pending', 'in_progress', 'completed'], default: 'pending' },
+		completionPercentage: { type: Number, min: 0, max: 100, default: 0 },
 	},
 	{ _id: false },
 );
@@ -43,6 +58,7 @@ const progressSchema = new mongoose.Schema(
 		water: { type: Number, min: 0, default: 0 },
 		weeklyProgress: { type: [weeklyProgressSchema], default: [] },
 		weightProgress: { type: [weightProgressSchema], default: [] },
+		dailyHabitLogs: { type: [dailyHabitLogSchema], default: [] },
 		habits: { type: [habitSchema], default: [] },
 		achievements: { type: [achievementSchema], default: [] },
 		macroSplit: {

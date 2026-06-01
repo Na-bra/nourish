@@ -48,12 +48,22 @@ const { buildCsv } = require('../utils/csvHelper');
 
 const getMealPlans = async (req, res) => {
 	try {
-		const { weekStart, userId, recipeId } = req.query;
+		const { weekStart, userId, recipeId, filterType, page, limit } = req.query;
 
 		const criteria = {};
 		if (weekStart) {
 			const start = new Date(weekStart);
-			if (!isNaN(start.getTime())) criteria.weekStart = start;
+			if (!isNaN(start.getTime())) {
+				if (filterType === 'month') {
+					const end = new Date(start);
+					end.setMonth(end.getMonth() + 1);
+					criteria.weekStart = { $gte: start, $lt: end };
+				} else {
+					const end = new Date(start);
+					end.setDate(end.getDate() + 7);
+					criteria.weekStart = { $gte: start, $lt: end };
+				}
+			}
 		}
 		if (userId) criteria.userId = userId;
 
@@ -61,7 +71,10 @@ const getMealPlans = async (req, res) => {
 			criteria.userId = req.user._id;
 		}
 
-		let mealPlans = await MealPlan.find(criteria).sort({ createdAt: -1 });
+		const pageNum = Math.max(Number(page) || 1, 1);
+		const lim = Math.min(Math.max(Number(limit) || 20, 1), 100);
+		const skip = (pageNum - 1) * lim;
+		let mealPlans = await MealPlan.find(criteria).sort({ createdAt: -1 }).skip(skip).limit(lim);
 
 		if (recipeId) {
 			mealPlans = mealPlans.filter((mp) => {
@@ -122,7 +135,25 @@ const updateMealPlan = async (req, res) => {
 		if (req.user && String(existing.userId) !== String(req.user._id)) {
 			return res.status(403).json({ message: 'Forbidden' });
 		}
-		const mealPlan = await MealPlan.findByIdAndUpdate(req.params.id, req.body, {
+		const payload = { ...req.body };
+		if (Array.isArray(payload.days)) {
+			for (const d of payload.days) {
+				for (const slotName of ['breakfast', 'lunch', 'dinner']) {
+					const slots = (d.meals && d.meals[slotName]) || [];
+					const dedup = [];
+					const seen = new Set();
+					for (const s of slots) {
+						const key = `${String(s.recipeId)}|${String(s.portion || 1)}`;
+						if (seen.has(key)) continue;
+						seen.add(key);
+						dedup.push(s);
+					}
+					d.meals[slotName] = dedup;
+				}
+			}
+		}
+
+		const mealPlan = await MealPlan.findByIdAndUpdate(req.params.id, payload, {
 			new: true,
 			runValidators: true,
 		});

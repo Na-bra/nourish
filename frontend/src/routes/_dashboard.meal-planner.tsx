@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, Fragment, useEffect } from "react";
 import { Heart, Printer, Plus, GripVertical, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors, closestCenter } from "@dnd-kit/core";
@@ -92,6 +92,7 @@ function recipeLookupKey(slotRecipeId: string, recipe: Recipe) {
 }
 
 function MealPlanner() {
+  const navigate = useNavigate();
   const [plan, setPlan] = useState<Plan>(makeEmptyPlan);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -227,7 +228,7 @@ function MealPlanner() {
                           const r = recipes.find(x => recipeLookupKey(slot.recipeId, x));
                           if (!r) return null;
                           const recipeId = recipeKey(r);
-                          return <SlotCard key={slot.id} id={`${day}|${meal}|${slot.id}`} recipe={r} portion={slot.portion}
+                          return <SlotCard key={slot.id} id={`${day}|${meal}|${slot.id}`} recipeId={recipeId} onOpen={() => navigate({ to: "/recipe/$id", params: { id: recipeId } })} recipe={r} portion={slot.portion}
                             fav={favorites.includes(recipeId)} onFav={() => toggleFavorite(recipeId)}
                             onRemove={() => removeSlot(day, meal, slot.id)}
                             onPortion={(d: number) => changePortion(day, meal, slot.id, d)} />;
@@ -248,13 +249,13 @@ function MealPlanner() {
   );
 }
 
-function SlotCard({ id, recipe, portion, fav, onFav, onRemove, onPortion }: any) {
+function SlotCard({ id, recipeId, onOpen, recipe, portion, fav, onFav, onRemove, onPortion }: any) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   return (
-    <div ref={setNodeRef} style={style} className="group relative rounded-lg border bg-card p-2 text-xs">
+    <div ref={setNodeRef} style={style} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen?.(); } }} className="group relative rounded-lg border bg-card p-2 text-xs transition hover:border-primary/50 hover:shadow-sm">
       <div className="flex items-start gap-1.5">
-        <button {...attributes} {...listeners} className="mt-0.5 cursor-grab text-muted-foreground active:cursor-grabbing">
+        <button {...attributes} {...listeners} onClick={(e) => e.stopPropagation()} className="mt-0.5 cursor-grab text-muted-foreground active:cursor-grabbing">
           <GripVertical className="h-3.5 w-3.5" />
         </button>
         <span className="text-base leading-none">{recipe.emoji}</span>
@@ -262,15 +263,15 @@ function SlotCard({ id, recipe, portion, fav, onFav, onRemove, onPortion }: any)
           <div className="truncate font-medium">{recipe.name}</div>
           <div className="text-[10px] text-muted-foreground">{Math.round(recipe.calories * portion)} kcal</div>
         </div>
-        <button onClick={onRemove} className="opacity-0 transition group-hover:opacity-100"><X className="h-3 w-3" /></button>
+        <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="opacity-0 transition group-hover:opacity-100"><X className="h-3 w-3" /></button>
       </div>
       <div className="mt-1.5 flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <button onClick={() => onPortion(-0.5)} className="grid h-5 w-5 place-items-center rounded border hover:bg-muted">-</button>
+          <button onClick={(e) => { e.stopPropagation(); onPortion(-0.5); }} className="grid h-5 w-5 place-items-center rounded border hover:bg-muted">-</button>
           <span className="text-[10px] font-medium">{portion}x</span>
-          <button onClick={() => onPortion(0.5)} className="grid h-5 w-5 place-items-center rounded border hover:bg-muted">+</button>
+          <button onClick={(e) => { e.stopPropagation(); onPortion(0.5); }} className="grid h-5 w-5 place-items-center rounded border hover:bg-muted">+</button>
         </div>
-        <button onClick={onFav}>
+        <button onClick={(e) => { e.stopPropagation(); onFav(); }}>
           <Heart className={`h-3.5 w-3.5 ${fav ? "fill-destructive text-destructive" : "text-muted-foreground"}`} />
         </button>
       </div>

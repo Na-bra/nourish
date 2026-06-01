@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as DashboardRouteImport } from './routes/_dashboard'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as RecipeIdRouteImport } from './routes/recipe.$id'
 import { Route as DashboardRecipesRouteImport } from './routes/_dashboard.recipes'
 import { Route as DashboardProgressRouteImport } from './routes/_dashboard.progress'
 import { Route as DashboardProfileRouteImport } from './routes/_dashboard.profile'
@@ -51,6 +52,11 @@ const DashboardRoute = DashboardRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecipeIdRoute = RecipeIdRouteImport.update({
+  id: '/recipe/$id',
+  path: '/recipe/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRecipesRoute = DashboardRecipesRouteImport.update({
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof DashboardProfileRoute
   '/progress': typeof DashboardProgressRoute
   '/recipes': typeof DashboardRecipesRouteWithChildren
+  '/recipe/$id': typeof RecipeIdRoute
   '/recipes/$id': typeof DashboardRecipesIdRoute
 }
 export interface FileRoutesByTo {
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/profile': typeof DashboardProfileRoute
   '/progress': typeof DashboardProgressRoute
   '/recipes': typeof DashboardRecipesRouteWithChildren
+  '/recipe/$id': typeof RecipeIdRoute
   '/recipes/$id': typeof DashboardRecipesIdRoute
 }
 export interface FileRoutesById {
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/_dashboard/profile': typeof DashboardProfileRoute
   '/_dashboard/progress': typeof DashboardProgressRoute
   '/_dashboard/recipes': typeof DashboardRecipesRouteWithChildren
+  '/recipe/$id': typeof RecipeIdRoute
   '/_dashboard/recipes/$id': typeof DashboardRecipesIdRoute
 }
 export interface FileRouteTypes {
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/progress'
     | '/recipes'
+    | '/recipe/$id'
     | '/recipes/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/progress'
     | '/recipes'
+    | '/recipe/$id'
     | '/recipes/$id'
   id:
     | '__root__'
@@ -187,6 +198,7 @@ export interface FileRouteTypes {
     | '/_dashboard/profile'
     | '/_dashboard/progress'
     | '/_dashboard/recipes'
+    | '/recipe/$id'
     | '/_dashboard/recipes/$id'
   fileRoutesById: FileRoutesById
 }
@@ -197,6 +209,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
+  RecipeIdRoute: typeof RecipeIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -241,6 +254,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recipe/$id': {
+      id: '/recipe/$id'
+      path: '/recipe/$id'
+      fullPath: '/recipe/$id'
+      preLoaderRoute: typeof RecipeIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_dashboard/recipes': {
@@ -344,6 +364,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,
+  RecipeIdRoute: RecipeIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

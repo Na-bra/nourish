@@ -5,7 +5,7 @@ const { signToken } = require('../utils/token');
 
 const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, targetCalories } = req.body;
     if (!email || !password || !name) return res.status(400).json({ message: 'Missing fields' });
 
     const normalizedEmail = String(email).trim().toLowerCase();
@@ -16,7 +16,19 @@ const register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(password, salt);
 
-    const user = await User.create({ name, email: normalizedEmail, password: hash });
+    const parsedTargetCalories = targetCalories === '' || targetCalories === undefined || targetCalories === null
+      ? null
+      : Number(targetCalories);
+    if (parsedTargetCalories !== null && (!Number.isFinite(parsedTargetCalories) || parsedTargetCalories < 0)) {
+      return res.status(400).json({ message: 'Invalid targetCalories' });
+    }
+
+    const user = await User.create({
+      name,
+      email: normalizedEmail,
+      password: hash,
+      targetCalories: parsedTargetCalories,
+    });
 
     const token = signToken({ sub: user._id.toString() });
     const safe = user.toObject();

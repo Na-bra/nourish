@@ -64,7 +64,7 @@ function FoodDB() {
 
   return (
     <>
-      <PageHeader title="Food database" subtitle="Search USDA-backed foods cached in MongoDB with detailed nutrition facts." />
+      <PageHeader title="Food database" subtitle="Search foods with detailed nutrition facts." />
       <div className="space-y-6 p-4 md:p-8">
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">

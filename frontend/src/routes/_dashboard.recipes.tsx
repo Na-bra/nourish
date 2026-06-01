@@ -208,7 +208,7 @@ function Recipes() {
         {!loading && error && <p className="col-span-full py-12 text-center text-destructive">{error}</p>}
         {!loading && !error && recipes.map(r => (
           <Card key={r._id} className="group overflow-hidden p-0 transition-shadow hover:shadow-soft">
-            <Link to="/recipes/$id" params={{ id: recipeKey(r) }} className="block">
+            <Link to="/recipe/$id" params={{ id: recipeKey(r) }} className="block">
               <div className="relative aspect-[4/3] overflow-hidden gradient-hero">
                 {r.image ? (
                   <img src={r.image} alt={r.name} className="h-full w-full object-cover" />

@@ -54,7 +54,19 @@ const updateUser = async (req, res) => {
 			return res.status(403).json({ message: 'Forbidden' });
 		}
 
-		const user = await User.findByIdAndUpdate(req.params.id, req.body, {
+		const payload = { ...req.body };
+		if (Object.prototype.hasOwnProperty.call(payload, 'weight')) {
+			const rawWeight = payload.weight;
+			if (rawWeight === '' || rawWeight === undefined || rawWeight === null) payload.weight = null;
+			else payload.weight = Number(rawWeight);
+		}
+		if (Object.prototype.hasOwnProperty.call(payload, 'targetCalories')) {
+			const rawTarget = payload.targetCalories;
+			if (rawTarget === '' || rawTarget === undefined || rawTarget === null) payload.targetCalories = null;
+			else payload.targetCalories = Number(rawTarget);
+		}
+
+		const user = await User.findByIdAndUpdate(req.params.id, payload, {
 			new: true,
 			runValidators: true,
 		});

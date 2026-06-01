@@ -102,11 +102,15 @@ function normalizeRecipe(recipe, mode = 'detail') {
 	if (!externalId) return null;
 
 	const tags = getTags(recipe);
+	const cuisines = Array.isArray(recipe?.cuisines) ? recipe.cuisines.map((c) => String(c).trim()).filter(Boolean) : [];
+	const diets = Array.isArray(recipe?.diets) ? recipe.diets.map((d) => String(d).trim()).filter(Boolean) : [];
 	const nutrition = recipe?.nutrition || {};
 	const calories = getCalories(nutrition);
 	const macros = getMacros(nutrition);
 	const name = String(recipe.title || recipe.name || '').trim();
 	const description = cleanHtml(recipe.summary || recipe.description || recipe.shortTitle || name);
+	const preparationMinutes = toNumber(recipe?.preparationMinutes ?? recipe?.prepTime ?? 0, 0) || undefined;
+	const cookingMinutes = toNumber(recipe?.cookingMinutes ?? recipe?.cookTime ?? 0, 0) || undefined;
 
 	return {
 		externalId,
@@ -115,6 +119,10 @@ function normalizeRecipe(recipe, mode = 'detail') {
 		image: String(recipe.image || '').trim(),
 		sourceUrl: String(recipe.sourceUrl || '').trim(),
 		time: Math.max(1, toNumber(recipe.readyInMinutes ?? recipe.cookingMinutes ?? recipe.preparationMinutes, 1)),
+		preparationTime: preparationMinutes,
+		cookingTime: cookingMinutes,
+		cuisines,
+		diets,
 		servings: Math.max(1, toNumber(recipe.servings, 1)),
 		calories,
 		difficulty: getDifficulty(recipe),
